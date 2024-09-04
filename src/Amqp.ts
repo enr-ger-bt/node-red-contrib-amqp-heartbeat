@@ -37,7 +37,7 @@ export default class Amqp {
       name: config.name,
       broker: config.broker,
       prefetch: config.prefetch,
-      reconnectOnError: config.reconnectOnError,
+      maxAttempts: config.maxAttempts,
       noAck: config.noAck,
       exchange: {
         name: config.exchangeName,
@@ -73,14 +73,18 @@ export default class Amqp {
 
     /* istanbul ignore next */
     this.connection.on('error', (e): void => {
-      // Set node to disconnected status
+      this.node.error(`AMQP Connection error: ${e}`);
       this.node.status(NODE_STATUS.Disconnected)
+      // If we don't set up this empty event handler
+      // node-red crashes with an Unhandled Exception
+      // This method allows the exception to be caught
+      // by the try/catch blocks in the amqp nodes
     })
 
     /* istanbul ignore next */
     this.connection.on('close', () => {
-      this.node.status(NODE_STATUS.Disconnected)
       this.node.log(`AMQP Connection closed`);
+      this.node.status(NODE_STATUS.Disconnected)
     })
 
     return this.connection
@@ -305,9 +309,8 @@ export default class Amqp {
 
     /* istanbul ignore next */
     this.channel.on('error', (e): void => {
-      // Set node to disconnected status
+      this.node.error(`AMQP Connection error: ${e}`);
       this.node.status(NODE_STATUS.Disconnected)
-      this.node.error(`AMQP Connection Error ${e}`, { payload: { error: e, source: 'Amqp' } })
     })
 
     return this.channel;
