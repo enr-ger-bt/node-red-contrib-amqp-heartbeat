@@ -25,7 +25,7 @@ module.exports = function (RED: NodeRedApp): void {
     // @ts-ignore
     RED.nodes.createNode(this, config)
     this.status(NODE_STATUS.Disconnected)
-    
+
     const configAmqp: AmqpInNodeDefaults & AmqpOutNodeDefaults = config;
 
     const amqp = new Amqp(RED, this, configAmqp)
@@ -90,14 +90,16 @@ module.exports = function (RED: NodeRedApp): void {
 
       try {
         //Execute publish only 
-        if (connection) {
+        const conn = await amqp.connect()
+        console.log(conn)
+        if (conn) {
           if (!!properties?.headers?.doNotStringifyPayload) {
             await amqp.publish(payload, properties)
           } else {
             await amqp.publish(JSON.stringify(payload), properties)
           }
         } else {
-          throw("Connection not present, impossible to publish.")
+          throw ("Connection not present, impossible to publish.")
         }
       } catch (e) {
         this.error(e, msg)
@@ -115,19 +117,25 @@ module.exports = function (RED: NodeRedApp): void {
 
     async function initializeNode(nodeIns) {
       reconnect = async () => {
-        // check the channel and clear all the event listener
-        if (channel && channel.removeAllListeners) {
-          channel.removeAllListeners()
-          channel.close();
-          channel = null;
+        try {
+          // check the channel and clear all the event listener
+          if (channel && channel.removeAllListeners) {
+            channel.removeAllListeners()
+            await channel.close();
+            channel = null;
+          }
+
+          // check the connection and clear all the event listener
+          if (connection && connection.removeAllListeners) {
+            connection.removeAllListeners()
+            await connection.close();
+            connection = null;
+          }
+        } catch (e) {
+          //TODO
+          // Find a way to obtain only one error when closing connection
         }
 
-        // check the connection and clear all the event listener
-        if (connection && connection.removeAllListeners) {
-          connection.removeAllListeners()
-          connection.close();
-          connection = null;
-        }
 
         // always clear timer before set it;
         clearTimeout(reconnectTimeout);
@@ -145,11 +153,16 @@ module.exports = function (RED: NodeRedApp): void {
 
         // istanbul ignore else
         if (connection) {
-          channel = await amqp.initialize()
+          try {
+            channel = await amqp.initialize()
+          } catch (e) {
+            nodeIns.error(`Impossible to initialize channel: ${e}`, { payload: { error: e, location: ErrorLocationEnum.ConnectionErrorEvent } })
+          }
 
           // When the server goes down
-          connection.on('close', async e => {
-            e && (await reconnect())
+          connection.on('close', async () => {   
+            reconnectOnError && (await reconnect())     
+            nodeIns.error(`Connection closed.`, { payload: { error: "Connection Closed", location: ErrorLocationEnum.ConnectionErrorEvent } })
           })
 
           // When the connection goes down
@@ -160,7 +173,7 @@ module.exports = function (RED: NodeRedApp): void {
 
           // When the channel goes down
           channel.on('close', async () => {
-            await reconnect()
+            //await reconnect()
           })
 
           // When the channel error occur
