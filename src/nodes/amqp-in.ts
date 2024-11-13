@@ -91,7 +91,7 @@ module.exports = function (RED: NodeRedApp): void {
 
           // When the channel goes down
           channel.on('close', async () => {
-            await reconnect()
+            // await reconnect()
           })
 
           // When the channel goes down
