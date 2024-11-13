@@ -91,7 +91,6 @@ module.exports = function (RED: NodeRedApp): void {
       try {
         //Execute publish only 
         const conn = await amqp.connect()
-        console.log(conn)
         if (conn) {
           if (!!properties?.headers?.doNotStringifyPayload) {
             await amqp.publish(payload, properties)
@@ -188,7 +187,6 @@ module.exports = function (RED: NodeRedApp): void {
         reconnectOnError && (await reconnect())
         if (e.code === ErrorType.InvalidLogin) {
           nodeIns.status(NODE_STATUS.Invalid)
-          console.log("NODEINS" + nodeIns.type)
           nodeIns.error(`AmqpOut() Could not connect to broker ${e}`, { payload: { error: e, location: ErrorLocationEnum.ConnectError } })
         } else {
           nodeIns.status(NODE_STATUS.Error)
