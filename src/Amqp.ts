@@ -74,7 +74,7 @@ export default class Amqp {
     /* istanbul ignore next */
     this.connection.on('error', (e): void => {
       this.node.error(`AMQP Connection error: ${e}`);
-      this.node.status(NODE_STATUS.Disconnected)
+      this.node.status(NODE_STATUS.Disconnected(null))
       // If we don't set up this empty event handler
       // node-red crashes with an Unhandled Exception
       // This method allows the exception to be caught
@@ -84,7 +84,7 @@ export default class Amqp {
     /* istanbul ignore next */
     this.connection.on('close', () => {
       this.node.log(`AMQP Connection closed`);
-      this.node.status(NODE_STATUS.Disconnected)
+      this.node.status(NODE_STATUS.Disconnected(null))
     })
 
     return this.connection
@@ -310,7 +310,7 @@ export default class Amqp {
     /* istanbul ignore next */
     this.channel.on('error', (e): void => {
       this.node.error(`AMQP Connection error: ${e}`);
-      this.node.status(NODE_STATUS.Disconnected)
+      this.node.status(NODE_STATUS.Disconnected(null))
     })
 
     return this.channel;

@@ -2,7 +2,7 @@ import { NodeRedApp, EditorNodeProperties } from 'node-red'
 import { NODE_STATUS } from '../constants'
 import { AmqpInNodeDefaults, AmqpOutNodeDefaults, ErrorLocationEnum, ErrorType, NodeType } from '../types'
 import Amqp from '../Amqp'
-import { MessageProperties } from 'amqplib'
+import { Channel, Connection, MessageProperties } from 'amqplib'
 
 module.exports = function (RED: NodeRedApp): void {
   function AmqpOut(
@@ -13,9 +13,10 @@ module.exports = function (RED: NodeRedApp): void {
     },
   ): void {
     let reconnectTimeout: NodeJS.Timeout
-    let reconnect = null;
-    let connection = null;
-    let channel = null;
+    let reconnect: () => Promise<void> = null;
+    let connection: Connection = null;
+    let channel: Channel = null;
+    let connectionNumber: number = 0;
 
     RED.events.once('flows:stopped', () => {
       clearTimeout(reconnectTimeout)
@@ -24,7 +25,7 @@ module.exports = function (RED: NodeRedApp): void {
     // eslint-disable-next-line @typescript-eslint/ban-ts-comment
     // @ts-ignore
     RED.nodes.createNode(this, config)
-    this.status(NODE_STATUS.Disconnected)
+    this.status(NODE_STATUS.Disconnected(`Connections: ${connectionNumber}`))
 
     const configAmqp: AmqpInNodeDefaults & AmqpOutNodeDefaults = config;
 
@@ -68,12 +69,21 @@ module.exports = function (RED: NodeRedApp): void {
           )
           break
         case 'jsonata':
-          amqp.setRoutingKey(
-            RED.util.evaluateJSONataExpression(
-              RED.util.prepareJSONataExpression(exchangeRoutingKey, this),
-              msg,
-            ),
-          )
+          try {
+            const preparedExpression = RED.util.prepareJSONataExpression(exchangeRoutingKey, this);
+            let routingKey = '';
+            RED.util.evaluateJSONataExpression(preparedExpression, msg, (error, result) => {
+              routingKey = result;
+            });
+        
+            if (routingKey == null || routingKey === '') {
+              throw new Error('Evaluated routing key is null or empty.');
+            }
+        
+            amqp.setRoutingKey(routingKey);
+          } catch (error) {
+            this.error(`Failed to evaluate JSONata expression for routing key: ${error.message}`, msg);
+          }
           break
         case 'str':
         default:
@@ -92,6 +102,7 @@ module.exports = function (RED: NodeRedApp): void {
         //Execute publish only 
         const conn = await amqp.connect()
         if (conn) {
+          connectionNumber++;
           if (!!properties?.headers?.doNotStringifyPayload) {
             await amqp.publish(payload, properties)
           } else {
@@ -99,6 +110,7 @@ module.exports = function (RED: NodeRedApp): void {
           }
         } else {
           throw ("Connection not present, impossible to publish.")
+          connectionNumber = 0;
         }
       } catch (e) {
         this.error(e, msg)
@@ -111,7 +123,9 @@ module.exports = function (RED: NodeRedApp): void {
     // When the node is re-deployed
     this.on('close', async (done: () => void): Promise<void> => {
       await amqp.close()
+      connectionNumber--;
       done && done()
+      
     })
 
     async function initializeNode(nodeIns) {

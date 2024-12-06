@@ -2,13 +2,15 @@ import { NodeRedApp, EditorNodeProperties } from 'node-red'
 import { NODE_STATUS } from '../constants'
 import { AmqpInNodeDefaults, AmqpOutNodeDefaults, ErrorType, NodeType, ErrorLocationEnum } from '../types'
 import Amqp from '../Amqp'
+import { Channel, Connection } from 'amqplib'
 
 module.exports = function (RED: NodeRedApp): void {
   function AmqpIn(config: EditorNodeProperties): void {
     let reconnectTimeout: NodeJS.Timeout
-    let reconnect = null;
-    let connection = null;
-    let channel = null;
+    let reconnect: () => Promise<void> = null;
+    let connection: Connection = null;
+    let channel: Channel = null;
+    let connectionNumber: number = 0;
 
     RED.events.once('flows:stopped', () => {
       clearTimeout(reconnectTimeout)
@@ -17,7 +19,8 @@ module.exports = function (RED: NodeRedApp): void {
     // eslint-disable-next-line @typescript-eslint/ban-ts-comment
     // @ts-ignore
     RED.nodes.createNode(this, config)
-    this.status(NODE_STATUS.Disconnected)
+    this.status(NODE_STATUS.Disconnected(`Connections: ${connectionNumber}`))
+    
 
     const configAmqp: AmqpInNodeDefaults & AmqpOutNodeDefaults = config;
 
@@ -52,13 +55,6 @@ module.exports = function (RED: NodeRedApp): void {
           channel = null;
         }
 
-        // check the connection and clear all the event listener
-        if (connection && connection.removeAllListeners) {
-          connection.removeAllListeners()
-          connection.close();
-          connection = null;
-        }
-
         // always clear timer before set it;
         clearTimeout(reconnectTimeout);
         reconnectTimeout = setTimeout(() => {
@@ -80,18 +76,20 @@ module.exports = function (RED: NodeRedApp): void {
 
           // When the connection goes down
           connection.on('close', async e => {
+            connectionNumber--;
             e && (await reconnect())
           })
 
           // When the connection goes down
           connection.on('error', async e => {
+            connectionNumber--;
             reconnectOnError && (await reconnect())
-            nodeIns.error(`Connection error ${e}`, { payload: { error: e, location: ErrorLocationEnum.ConnectionErrorEvent } })
+            nodeIns.error(`Connection error ${e}`, { payload: { error: e, location: ErrorLocationEnum.ConnectionErrorEvent } })           
           })
 
           // When the channel goes down
           channel.on('close', async () => {
-            // await reconnect()
+            await reconnect()
           })
 
           // When the channel goes down
@@ -99,15 +97,18 @@ module.exports = function (RED: NodeRedApp): void {
             reconnectOnError && (await reconnect())
             nodeIns.error(`Channel error ${e}`, { payload: { error: e, location: ErrorLocationEnum.ChannelErrorEvent } })
           })
-
-          nodeIns.status(NODE_STATUS.Connected)
+          connectionNumber++;
+          nodeIns.status(NODE_STATUS.Connected(`Connections: ${connectionNumber}`))
         }
-      } catch (e) {
+      } 
+      catch (e) {
+        connectionNumber--;
         reconnectOnError && (await reconnect())
         if (e.code === ErrorType.InvalidLogin) {
           nodeIns.status(NODE_STATUS.Invalid)
           nodeIns.error(`AmqpIn() Could not connect to broker ${e}`, { payload: { error: e, location: ErrorLocationEnum.ConnectError } })
-        } else {
+        } 
+        else {
           nodeIns.status(NODE_STATUS.Error)
           nodeIns.error(`AmqpIn() ${e}`, { payload: { error: e, source: 'ConnectionError' } })
         }
