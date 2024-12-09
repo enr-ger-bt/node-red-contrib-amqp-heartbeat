@@ -21,4 +21,9 @@ export const NODE_STATUS: { [index: string]: (extraText?: string) => NodeStatus 
     shape: 'ring',
     text: `Unable to connect${extraText ? `: ${extraText}` : ''}`,
   }),
+  Reconnecting: (extraText = '') => ({
+    fill: 'yellow',
+    shape: 'ring',
+    text: `Reconnecting${extraText ? `: ${extraText}` : ''}`,
+  }),
 });

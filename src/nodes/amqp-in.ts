@@ -68,9 +68,10 @@ module.exports = function (RED: NodeRedApp): void {
 
       try {
         connection = await amqp.connect()
-
+        
         // istanbul ignore else
         if (connection) {
+          connectionNumber++;
           channel = await amqp.initialize()
           await amqp.consume()
 
@@ -97,7 +98,7 @@ module.exports = function (RED: NodeRedApp): void {
             reconnectOnError && (await reconnect())
             nodeIns.error(`Channel error ${e}`, { payload: { error: e, location: ErrorLocationEnum.ChannelErrorEvent } })
           })
-          connectionNumber++;
+          
           nodeIns.status(NODE_STATUS.Connected(`Connections: ${connectionNumber}`))
         }
       } 

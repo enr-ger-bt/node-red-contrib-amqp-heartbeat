@@ -16,7 +16,7 @@ module.exports = function (RED: NodeRedApp): void {
     let reconnect: () => Promise<void> = null;
     let connection: Connection = null;
     let channel: Channel = null;
-    let connectionNumber: number = 0;
+    let isReconnecting: Boolean = false;
 
     RED.events.once('flows:stopped', () => {
       clearTimeout(reconnectTimeout)
@@ -25,7 +25,7 @@ module.exports = function (RED: NodeRedApp): void {
     // eslint-disable-next-line @typescript-eslint/ban-ts-comment
     // @ts-ignore
     RED.nodes.createNode(this, config)
-    this.status(NODE_STATUS.Disconnected(`Connections: ${connectionNumber}`))
+    this.status(NODE_STATUS.Disconnected(null))
 
     const configAmqp: AmqpInNodeDefaults & AmqpOutNodeDefaults = config;
 
@@ -33,7 +33,6 @@ module.exports = function (RED: NodeRedApp): void {
 
     const reconnectOnError = configAmqp.reconnectOnError;
 
-    const reconnectTimeoutValue = configAmqp.reconnectTimeoutValue
 
     // handle input event;
     const inputListener = async (msg, _, done) => {
@@ -69,21 +68,12 @@ module.exports = function (RED: NodeRedApp): void {
           )
           break
         case 'jsonata':
-          try {
-            const preparedExpression = RED.util.prepareJSONataExpression(exchangeRoutingKey, this);
-            let routingKey = '';
-            RED.util.evaluateJSONataExpression(preparedExpression, msg, (error, result) => {
-              routingKey = result;
-            });
-        
-            if (routingKey == null || routingKey === '') {
-              throw new Error('Evaluated routing key is null or empty.');
-            }
-        
-            amqp.setRoutingKey(routingKey);
-          } catch (error) {
-            this.error(`Failed to evaluate JSONata expression for routing key: ${error.message}`, msg);
-          }
+          amqp.setRoutingKey(
+            RED.util.evaluateJSONataExpression(
+              RED.util.prepareJSONataExpression(exchangeRoutingKey, this),
+              msg,
+            ),
+          )
           break
         case 'str':
         default:
@@ -99,22 +89,20 @@ module.exports = function (RED: NodeRedApp): void {
       }
 
       try {
-        //Execute publish only 
-        const conn = await amqp.connect()
-        if (conn) {
-          connectionNumber++;
-          if (!!properties?.headers?.doNotStringifyPayload) {
-            await amqp.publish(payload, properties)
-          } else {
-            await amqp.publish(JSON.stringify(payload), properties)
-          }
+        if (!!properties?.headers?.doNotStringifyPayload) {
+          amqp.publish(payload, properties)
         } else {
-          throw ("Connection not present, impossible to publish.")
-          connectionNumber = 0;
+          amqp.publish(JSON.stringify(payload), properties)
         }
-      } catch (e) {
-        this.error(e, msg)
+        this.status(NODE_STATUS.Connected("Message sent."));
       }
+      catch (e) {
+        this.status(NODE_STATUS.Error(`Error while publishing the message. Details: ${e}`));
+      }
+
+      setTimeout(() => {
+        this.status(NODE_STATUS.Connected("Ready."));
+      }, 1500);
 
       done && done()
     }
@@ -123,32 +111,30 @@ module.exports = function (RED: NodeRedApp): void {
     // When the node is re-deployed
     this.on('close', async (done: () => void): Promise<void> => {
       await amqp.close()
-      connectionNumber--;
       done && done()
-      
     })
 
     async function initializeNode(nodeIns) {
       reconnect = async () => {
-        try {
-          // check the channel and clear all the event listener
-          if (channel && channel.removeAllListeners) {
-            channel.removeAllListeners()
-            await channel.close();
-            channel = null;
-          }
 
-          // check the connection and clear all the event listener
-          if (connection && connection.removeAllListeners) {
-            connection.removeAllListeners()
-            await connection.close();
-            connection = null;
-          }
-        } catch (e) {
-          //TODO
-          // Find a way to obtain only one error when closing connection
+        if (isReconnecting) return;
+
+        isReconnecting = true;
+
+
+        // check the channel and clear all the event listener
+        if (channel && channel.removeAllListeners) {
+          channel.removeAllListeners()
+          channel.close();
+          channel = null;
         }
 
+        // check the connection and clear all the event listener
+        if (connection && connection.removeAllListeners) {
+          connection.removeAllListeners()
+          connection.close();
+          connection = null;
+        }
 
         // always clear timer before set it;
         clearTimeout(reconnectTimeout);
@@ -158,7 +144,9 @@ module.exports = function (RED: NodeRedApp): void {
           } catch (e) {
             reconnect()
           }
-        }, reconnectTimeoutValue)
+        }, 2000)
+
+        isReconnecting = false;
       }
 
       try {
@@ -166,16 +154,11 @@ module.exports = function (RED: NodeRedApp): void {
 
         // istanbul ignore else
         if (connection) {
-          try {
-            channel = await amqp.initialize()
-          } catch (e) {
-            nodeIns.error(`Impossible to initialize channel: ${e}`, { payload: { error: e, location: ErrorLocationEnum.ConnectionErrorEvent } })
-          }
+          channel = await amqp.initialize()
 
           // When the server goes down
-          connection.on('close', async () => {   
-            reconnectOnError && (await reconnect())     
-            nodeIns.error(`Connection closed.`, { payload: { error: "Connection Closed", location: ErrorLocationEnum.ConnectionErrorEvent } })
+          connection.on('close', async e => {
+            e && (await reconnect())
           })
 
           // When the connection goes down
@@ -186,7 +169,7 @@ module.exports = function (RED: NodeRedApp): void {
 
           // When the channel goes down
           channel.on('close', async () => {
-            //await reconnect()
+            await reconnect()
           })
 
           // When the channel error occur
@@ -195,15 +178,15 @@ module.exports = function (RED: NodeRedApp): void {
             nodeIns.error(`Channel error ${e}`, { payload: { error: e, location: ErrorLocationEnum.ChannelErrorEvent } })
           })
 
-          nodeIns.status(NODE_STATUS.Connected)
+          nodeIns.status(NODE_STATUS.Connected(`Ready.`))
         }
       } catch (e) {
         reconnectOnError && (await reconnect())
         if (e.code === ErrorType.InvalidLogin) {
-          nodeIns.status(NODE_STATUS.Invalid)
+          nodeIns.status(NODE_STATUS.Invalid(null))
           nodeIns.error(`AmqpOut() Could not connect to broker ${e}`, { payload: { error: e, location: ErrorLocationEnum.ConnectError } })
         } else {
-          nodeIns.status(NODE_STATUS.Error)
+          nodeIns.status(NODE_STATUS.Error(`Error while reconnecting. Details ${e}`))
           nodeIns.error(`AmqpOut() ${e}`, { payload: { error: e, location: ErrorLocationEnum.ConnectError } })
         }
       }
