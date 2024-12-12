@@ -121,32 +121,41 @@ module.exports = function (RED: NodeRedApp): void {
 
         isReconnecting = true;
 
+        try {
 
-        // check the channel and clear all the event listener
-        if (channel && channel.removeAllListeners) {
-          channel.removeAllListeners()
-          channel.close();
-          channel = null;
-        }
-
-        // check the connection and clear all the event listener
-        if (connection && connection.removeAllListeners) {
-          connection.removeAllListeners()
-          connection.close();
-          connection = null;
-        }
-
-        // always clear timer before set it;
-        clearTimeout(reconnectTimeout);
-        reconnectTimeout = setTimeout(() => {
-          try {
-            initializeNode(nodeIns)
-          } catch (e) {
-            reconnect()
+          // check the channel and clear all the event listener
+          if (channel && channel.removeAllListeners) {
+            channel.removeAllListeners()
+            channel.close();
+            channel = null;
           }
-        }, 2000)
 
-        isReconnecting = false;
+          // check the connection and clear all the event listener
+          if (connection && connection.removeAllListeners) {
+            connection.removeAllListeners()
+            connection.close();
+            connection = null;
+          }
+
+          // always clear timer before set it;
+          clearTimeout(reconnectTimeout);
+          reconnectTimeout = setTimeout(() => {
+            try {
+              initializeNode(nodeIns)
+            } catch (e) {
+              reconnect()
+            }
+          }, 2000)
+        }
+        catch (e) {
+          isReconnecting = false;
+          let errorMsg = `Error while reconnecting, details: ${e}`
+          nodeIns.error(errorMsg);
+          nodeIns.status(NODE_STATUS.Error(errorMsg));
+        }
+        finally {
+          isReconnecting = false;
+        }
       }
 
       try {
