@@ -70,16 +70,9 @@ export default class Amqp {
     this.broker = this.RED.nodes.getNode(broker)
 
     const brokerUrl = this.getBrokerUrl(this.broker)
-
-      //   // Append connection_name to brokerUrl if clientName is valid
-      //   if (clientName && clientName.trim() !== "") {
-      //     const separator = brokerUrl.includes('?') ? '&' : '?';
-      //     brokerUrl += `${separator}connection_name=${encodeURIComponent(clientName)}`;
-      //     this.node.log(`Updated Broker URL: ${brokerUrl}`);
-      // }
-    
+   
     // Determine the connection name, falling back to `name` if `clientName` is invalid
-    const connectionName = clientName && clientName.trim() !== "" ? clientName : name;
+    const connectionName = clientName && clientName.trim() !== "" ? clientName : `${name}-${uuidv4()}`;
 
 
 
