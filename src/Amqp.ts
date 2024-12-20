@@ -57,11 +57,12 @@ export default class Amqp {
       headers: this.parseJson(config.headers),
       outputs: config.outputs,
       rpcTimeout: config.rpcTimeoutMilliseconds,
+      clientName: config.clientName
     }
   }
 
   public async connect(): Promise<Connection> {
-    const { broker } = this.config
+    const { broker, clientName, name } = this.config
 
     // wtf happened to the types?
     // eslint-disable-next-line @typescript-eslint/ban-ts-comment
@@ -69,7 +70,23 @@ export default class Amqp {
     this.broker = this.RED.nodes.getNode(broker)
 
     const brokerUrl = this.getBrokerUrl(this.broker)
-    this.connection = await connect(brokerUrl, { heartbeat: 2 })
+
+      //   // Append connection_name to brokerUrl if clientName is valid
+      //   if (clientName && clientName.trim() !== "") {
+      //     const separator = brokerUrl.includes('?') ? '&' : '?';
+      //     brokerUrl += `${separator}connection_name=${encodeURIComponent(clientName)}`;
+      //     this.node.log(`Updated Broker URL: ${brokerUrl}`);
+      // }
+    
+    // Determine the connection name, falling back to `name` if `clientName` is invalid
+    const connectionName = clientName && clientName.trim() !== "" ? clientName : name;
+
+
+
+    this.connection = await connect(brokerUrl, {
+      heartbeat: 2, 
+      ...(connectionName && { clientProperties: { connection_name: connectionName } })
+    })
 
     /* istanbul ignore next */
     this.connection.on('error', (e): void => {

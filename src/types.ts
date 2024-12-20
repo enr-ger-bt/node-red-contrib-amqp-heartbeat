@@ -36,7 +36,8 @@ export interface AmqpConfig {
   headers: GenericJsonObject
   outputs?: number
   rpcTimeout?: number
-  reconnectTimeoutValue?: number
+  reconnectTimeoutValue?: number,
+  clientName? : string
 }
 
 export interface AmqpInNodeDefaults {
@@ -60,6 +61,7 @@ export interface AmqpInNodeDefaults {
 export interface AmqpOutNodeDefaults {
   name?: any
   broker?: any
+  clientName?: string,
   exchangeName?: any
   exchangeType?: any
   exchangeRoutingKey?: any
