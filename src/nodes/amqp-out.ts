@@ -9,7 +9,8 @@ module.exports = function (RED: NodeRedApp): void {
     config: EditorNodeProperties & {
       exchangeRoutingKey: string
       exchangeRoutingKeyType: string
-      amqpProperties: string
+      amqpProperties: string,
+      clientName: string
     },
   ): void {
     let reconnectTimeout: NodeJS.Timeout
@@ -25,6 +26,7 @@ module.exports = function (RED: NodeRedApp): void {
     // eslint-disable-next-line @typescript-eslint/ban-ts-comment
     // @ts-ignore
     RED.nodes.createNode(this, config)
+
     this.status(NODE_STATUS.Disconnected(null))
 
     const configAmqp: AmqpInNodeDefaults & AmqpOutNodeDefaults = config;
