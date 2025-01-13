@@ -36,6 +36,52 @@ module.exports = function (RED: NodeRedApp): void {
     const reconnectOnError = configAmqp.reconnectOnError;
 
 
+    /**
+     * Clears the AMQP channel and connection by removing all listeners and closing them.
+     * 
+     * This function performs the following steps:
+     * 1. If the `channel` exists and has a `removeAllListeners` method, it removes all listeners, closes the channel, and sets it to `null`.
+     * 2. If the `connection` exists and has a `removeAllListeners` method, it removes all listeners, closes the connection, and sets it to `null`.
+     * 
+     * @async
+     * @function clearChannelAndConnection
+     * @returns {Promise<void>} A promise that resolves when the channel and connection are cleared.
+     */
+    async function clearChannelAndConnection() {
+      
+      if (channel && channel.removeAllListeners) {
+        channel.removeAllListeners()
+        channel.close();
+        channel = null;
+      }
+
+      if (connection && connection.removeAllListeners) {
+        connection.removeAllListeners()
+        connection.close();
+        connection = null;
+      }
+
+    }
+    
+    /**
+     * Handles the reconnection logic for a given node instance.
+     * 
+     * @param nodeIns - The node instance that requires reconnection handling.
+     * @param e - The error object that triggered the reconnection attempt.
+     * 
+     * @returns A promise that resolves when the reconnection attempt is complete.
+     * 
+     * @throws Will throw an error if the reconnection attempt fails.
+     */
+    async function handleReconnect(nodeIns, e) {
+      try{
+        e && reconnectOnError && (await reconnect())
+      }
+      catch(e){
+        nodeIns.error(`Error while reconnecting, details: ${e}`)
+      }
+    }
+
     // handle input event;
     const inputListener = async (msg, _, done) => {
       const { payload, routingKey, properties: msgProperties } = msg
@@ -125,19 +171,7 @@ module.exports = function (RED: NodeRedApp): void {
 
         try {
 
-          // check the channel and clear all the event listener
-          if (channel && channel.removeAllListeners) {
-            channel.removeAllListeners()
-            channel.close();
-            channel = null;
-          }
-
-          // check the connection and clear all the event listener
-          if (connection && connection.removeAllListeners) {
-            connection.removeAllListeners()
-            connection.close();
-            connection = null;
-          }
+          await clearChannelAndConnection()
 
           // always clear timer before set it;
           clearTimeout(reconnectTimeout);
@@ -169,24 +203,30 @@ module.exports = function (RED: NodeRedApp): void {
 
           // When the server goes down
           connection.on('close', async e => {
-            e && (await reconnect())
+            nodeIns.debug(`Connection closed ${e}`, { payload: { error: e, location: "amqp-out.ts line 206." } })
+            nodeIns.status(NODE_STATUS.Reconnecting(`Connection closed. Reconnecting...`))
+            await handleReconnect(nodeIns, e)
           })
 
           // When the connection goes down
           connection.on('error', async e => {
-            reconnectOnError && (await reconnect())
             nodeIns.error(`Connection error ${e}`, { payload: { error: e, location: ErrorLocationEnum.ConnectionErrorEvent } })
+            nodeIns.status(NODE_STATUS.Error(`Connection error. Reconnecting...`))
+            await handleReconnect(nodeIns, e)
           })
 
           // When the channel goes down
-          channel.on('close', async () => {
-            await reconnect()
+          channel.on('close', async (e) => {
+            nodeIns.debug(`Channel closed`, { payload: { location: "amqp-out.ts line 220." } })
+            nodeIns.status(NODE_STATUS.Reconnecting(`Channel closed. Reconnecting...`))
+            await handleReconnect(nodeIns, e)
           })
 
           // When the channel error occur
           channel.on('error', async e => {
-            reconnectOnError && (await reconnect())
             nodeIns.error(`Channel error ${e}`, { payload: { error: e, location: ErrorLocationEnum.ChannelErrorEvent } })
+            nodeIns.status(NODE_STATUS.Error(`Channel error. Reconnecting...`))
+            await handleReconnect(nodeIns, e)
           })
 
           nodeIns.status(NODE_STATUS.Connected(`Ready.`))

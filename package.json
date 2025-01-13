@@ -73,6 +73,7 @@
     "typescript": "^4.3.5"
   },
   "dependencies": {
+    "@stormpass/node-red-contrib-amqp": "file:",
     "amqplib": "^0.10.3",
     "lodash.clonedeep": "^4.5.0",
     "uuid": "^8.3.2"
