@@ -74,8 +74,6 @@ export default class Amqp {
     // Determine the connection name, falling back to `name` if `clientName` is invalid
     const connectionName = clientName && clientName.trim() !== "" ? clientName : `${name}-${uuidv4()}`;
 
-
-
     this.connection = await connect(brokerUrl, {
       heartbeat: 2, 
       ...(connectionName && { clientProperties: { connection_name: connectionName } })

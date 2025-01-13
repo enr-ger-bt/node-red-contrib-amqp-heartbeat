@@ -7,6 +7,7 @@
       broker: { value: '', type: 'amqp-broker' },
       prefetch: { value: 0 },
       reconnectOnError: { value: false },
+      clientName: { value: ''},
       noAck: { value: true },
       exchangeName: { value: '' },
       exchangeType: { value: 'topic' },
@@ -34,6 +35,11 @@
       $('#node-input-headers').typedInput({
         type: 'json',
         types: ['json'],
+      })
+
+      $('#node-input-clientName').typedInput({
+        type: 'str',
+        types: ['str'],
       })
 
       $('#node-input-exchangeType').change(function (e) {
@@ -72,6 +78,10 @@
   <div class="form-row">
     <label for="node-input-broker"><i class="fa fa-globe"></i>&nbsp;&nbsp;Broker</label>
     <input type="text" id="node-input-broker" placeholder="AMQP Broker">
+  </div>
+  <div class="form-row">
+    <label for="node-input-clientName"><i class="fa fa-tag"></i>&nbsp;&nbsp;Client name</label>
+    <input type="text" id="node-input-clientName">
   </div>
   <div class="form-row">
     <label for="node-input-prefetch"><i class="fa fa-filter"></i>&nbsp;&nbsp;Prefetch</label>

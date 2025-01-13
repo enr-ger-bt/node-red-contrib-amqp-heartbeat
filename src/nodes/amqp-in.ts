@@ -5,7 +5,9 @@ import Amqp from '../Amqp'
 import { Channel, Connection } from 'amqplib'
 
 module.exports = function (RED: NodeRedApp): void {
-  function AmqpIn(config: EditorNodeProperties): void {
+  function AmqpIn(config: EditorNodeProperties & {
+    clientName: string
+  }): void {
     let reconnectTimeout: NodeJS.Timeout
     let reconnect: () => Promise<void> = null;
     let connection: Connection = null;
