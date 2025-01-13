@@ -21,6 +21,7 @@ import {
 } from './types'
 import { NODE_STATUS } from './constants'
 
+
 export default class Amqp {
   private config: AmqpConfig
   private broker: Node
