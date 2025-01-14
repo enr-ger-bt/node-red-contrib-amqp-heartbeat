@@ -75,6 +75,7 @@ module.exports = function (RED: NodeRedApp): void {
      */
     async function handleReconnect(nodeIns, e) {
       try{
+        nodeIns.status(NODE_STATUS.Reconnecting(`Reconnecting...`))
         e && reconnectOnError && (await reconnect())
       }
       catch(e){
@@ -186,7 +187,7 @@ module.exports = function (RED: NodeRedApp): void {
         catch (e) {
           isReconnecting = false;
           let errorMsg = `Error while reconnecting, details: ${e}`
-          nodeIns.error(errorMsg);
+          RED.log.error(errorMsg);
           nodeIns.status(NODE_STATUS.Error(errorMsg));
         }
         finally {
@@ -203,28 +204,27 @@ module.exports = function (RED: NodeRedApp): void {
 
           // When the server goes down
           connection.on('close', async e => {
-            nodeIns.debug(`Connection closed ${e}`, { payload: { error: e, location: "amqp-out.ts line 206." } })
-            nodeIns.status(NODE_STATUS.Reconnecting(`Connection closed. Reconnecting...`))
+            RED.log.debug(`Connection closed details: ${e}`)
             await handleReconnect(nodeIns, e)
           })
 
           // When the connection goes down
           connection.on('error', async e => {
-            nodeIns.error(`Connection error ${e}`, { payload: { error: e, location: ErrorLocationEnum.ConnectionErrorEvent } })
+            RED.log.error(`Connection error ${e}`)
             nodeIns.status(NODE_STATUS.Error(`Connection error. Reconnecting...`))
             await handleReconnect(nodeIns, e)
           })
 
           // When the channel goes down
           channel.on('close', async (e) => {
-            nodeIns.debug(`Channel closed`, { payload: { location: "amqp-out.ts line 220." } })
+            RED.log.debug(`Channel closed.`)
             nodeIns.status(NODE_STATUS.Reconnecting(`Channel closed. Reconnecting...`))
             await handleReconnect(nodeIns, e)
           })
 
           // When the channel error occur
           channel.on('error', async e => {
-            nodeIns.error(`Channel error ${e}`, { payload: { error: e, location: ErrorLocationEnum.ChannelErrorEvent } })
+            RED.log.error(`Channel error ${e}`)
             nodeIns.status(NODE_STATUS.Error(`Channel error. Reconnecting...`))
             await handleReconnect(nodeIns, e)
           })
@@ -235,10 +235,10 @@ module.exports = function (RED: NodeRedApp): void {
         reconnectOnError && (await reconnect())
         if (e.code === ErrorType.InvalidLogin) {
           nodeIns.status(NODE_STATUS.Invalid(null))
-          nodeIns.error(`AmqpOut() Could not connect to broker ${e}`, { payload: { error: e, location: ErrorLocationEnum.ConnectError } })
+          RED.log.error(`Could not connect to broker, error details: ${e}`)
         } else {
+          RED.log.error(`AmqpOut() ${e}`)
           nodeIns.status(NODE_STATUS.Error(`Error while reconnecting. Details ${e}`))
-          nodeIns.error(`AmqpOut() ${e}`, { payload: { error: e, location: ErrorLocationEnum.ConnectError } })
         }
       }
     }
