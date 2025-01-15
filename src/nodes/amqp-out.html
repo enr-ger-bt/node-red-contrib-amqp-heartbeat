@@ -1,11 +1,13 @@
 <script type="text/javascript">
   RED.nodes.registerType('amqp-out', {
     category: 'AMQP',
-    color: '#D1649C',
+    color: '#FF5F1F',
     defaults: {
       name: { value: '' },
       broker: { value: '', type: 'amqp-broker' },
       reconnectOnError: { value: false },
+      reconnectTimeoutValue: { value: 5 },
+      clientName: { value: '' },
       exchangeName: { value: '' },
       exchangeType: { value: 'topic' },
       exchangeRoutingKey: { value: '' },
@@ -42,7 +44,17 @@
         types: ['json'],
       })
 
+      $('#node-input-clientName').typedInput({
+        type: 'str',
+        types: ['str'],
+      })
+
       $('#node-input-rpcTimeoutMilliseconds').typedInput({
+        type: 'num',
+        types: ['num'],
+      })
+
+      $('#node-input-reconnectTimeoutValue').typedInput({
         type: 'num',
         types: ['num'],
       })
@@ -79,21 +91,27 @@
   div.wide-label-amqp-out label {
     width: 35% !important;
   }
+
   div.wide-label-amqp-out input.simple-input {
     width: 64% !important;
   }
+
   div.wide-label-amqp-out div.red-ui-typedInput-container {
     width: 64% !important
   }
+
   div.wider-label-amqp-out label {
     width: 50% !important;
   }
+
   select.small-amqp-out {
     width: 75px !important;
   }
+
   input.small-amqp-out {
     width: 120px !important;
   }
+
   div.form-tips {
     margin: 20px 0;
   }
@@ -101,7 +119,7 @@
 
 <script type="text/html" data-template-name="amqp-out">
   <div class="form-row">
-    <label for="node-input-name"><i class="fa fa-tag"></i>&nbsp;&nbsp;名称</label>
+    <label for="node-input-name"><i class="fa fa-tag"></i>&nbsp;&nbsp;Name</label>
     <input type="text" id="node-input-name" placeholder="Leave blank to use exchange name">
   </div>
   <div class="form-row">
@@ -109,9 +127,17 @@
     <input type="text" id="node-input-broker" placeholder="AMQP Broker">
   </div>
   <div class="form-row">
+    <label for="node-input-clientName"><i class="fa fa-tag"></i>&nbsp;&nbsp;Client name</label>
+    <input type="text" id="node-input-clientName">
+  </div>
+  <div class="form-row">
     <label>&nbsp;&nbsp;</label>
     <input id="node-input-reconnectOnError" style="width:20px; vertical-align:baseline; margin-right:5px;" type="checkbox">
     <label for="node-input-reconnectOnError" style="width:auto; margin-top:7px;">reconnectOnError</label>
+  </div>
+  <div class="form-row">
+    <label for="node-input-reconnectTimeoutValue"><i class="fa fa-clock-o"></i>&nbsp;&nbsp;Reconnect timeout value (ms)</label>
+    <input type="text" class="small-amqp-out" id="node-input-reconnectTimeoutValue">
   </div>
   <hr>
   <h4>Exchange Info</h4>

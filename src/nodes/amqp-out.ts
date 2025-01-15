@@ -2,20 +2,22 @@ import { NodeRedApp, EditorNodeProperties } from 'node-red'
 import { NODE_STATUS } from '../constants'
 import { AmqpInNodeDefaults, AmqpOutNodeDefaults, ErrorLocationEnum, ErrorType, NodeType } from '../types'
 import Amqp from '../Amqp'
-import { MessageProperties } from 'amqplib'
+import { Channel, Connection, MessageProperties } from 'amqplib'
 
 module.exports = function (RED: NodeRedApp): void {
   function AmqpOut(
     config: EditorNodeProperties & {
       exchangeRoutingKey: string
       exchangeRoutingKeyType: string
-      amqpProperties: string
+      amqpProperties: string,
+      clientName: string
     },
   ): void {
     let reconnectTimeout: NodeJS.Timeout
-    let reconnect = null;
-    let connection = null;
-    let channel = null;
+    let reconnect: () => Promise<void> = null;
+    let connection: Connection = null;
+    let channel: Channel = null;
+    let isReconnecting: Boolean = false;
 
     RED.events.once('flows:stopped', () => {
       clearTimeout(reconnectTimeout)
@@ -24,14 +26,62 @@ module.exports = function (RED: NodeRedApp): void {
     // eslint-disable-next-line @typescript-eslint/ban-ts-comment
     // @ts-ignore
     RED.nodes.createNode(this, config)
-    this.status(NODE_STATUS.Disconnected)
-    
+
+    this.status(NODE_STATUS.Disconnected(null))
+
     const configAmqp: AmqpInNodeDefaults & AmqpOutNodeDefaults = config;
 
     const amqp = new Amqp(RED, this, configAmqp)
 
     const reconnectOnError = configAmqp.reconnectOnError;
 
+
+    /**
+     * Clears the AMQP channel and connection by removing all listeners and closing them.
+     * 
+     * This function performs the following steps:
+     * 1. If the `channel` exists and has a `removeAllListeners` method, it removes all listeners, closes the channel, and sets it to `null`.
+     * 2. If the `connection` exists and has a `removeAllListeners` method, it removes all listeners, closes the connection, and sets it to `null`.
+     * 
+     * @async
+     * @function clearChannelAndConnection
+     * @returns {Promise<void>} A promise that resolves when the channel and connection are cleared.
+     */
+    async function clearChannelAndConnection() {
+      
+      if (channel && channel.removeAllListeners) {
+        channel.removeAllListeners()
+        channel.close();
+        channel = null;
+      }
+
+      if (connection && connection.removeAllListeners) {
+        connection.removeAllListeners()
+        connection.close();
+        connection = null;
+      }
+
+    }
+    
+    /**
+     * Handles the reconnection logic for a given node instance.
+     * 
+     * @param nodeIns - The node instance that requires reconnection handling.
+     * @param e - The error object that triggered the reconnection attempt.
+     * 
+     * @returns A promise that resolves when the reconnection attempt is complete.
+     * 
+     * @throws Will throw an error if the reconnection attempt fails.
+     */
+    async function handleReconnect(nodeIns, e) {
+      try{
+        nodeIns.status(NODE_STATUS.Reconnecting(`Reconnecting...`))
+        e && reconnectOnError && (await reconnect())
+      }
+      catch(e){
+        nodeIns.error(`Error while reconnecting, details: ${e}`)
+      }
+    }
 
     // handle input event;
     const inputListener = async (msg, _, done) => {
@@ -87,11 +137,21 @@ module.exports = function (RED: NodeRedApp): void {
           break
       }
 
-      if (!!properties?.headers?.doNotStringifyPayload) {
-        amqp.publish(payload, properties)
-      } else {
-        amqp.publish(JSON.stringify(payload), properties)
+      try {
+        if (!!properties?.headers?.doNotStringifyPayload) {
+          amqp.publish(payload, properties)
+        } else {
+          amqp.publish(JSON.stringify(payload), properties)
+        }
+        this.status(NODE_STATUS.Connected("Message sent."));
       }
+      catch (e) {
+        this.status(NODE_STATUS.Error(`Error while publishing the message. Details: ${e}`));
+      }
+
+      setTimeout(() => {
+        this.status(NODE_STATUS.Connected("Ready."));
+      }, 1500);
 
       done && done()
     }
@@ -105,31 +165,36 @@ module.exports = function (RED: NodeRedApp): void {
 
     async function initializeNode(nodeIns) {
       reconnect = async () => {
-        // check the channel and clear all the event listener
-        if (channel && channel.removeAllListeners) {
-          channel.removeAllListeners()
-          channel.close();
-          channel = null;
-        }
 
-        // check the connection and clear all the event listener
-        if (connection && connection.removeAllListeners) {
-          connection.removeAllListeners()
-          connection.close();
-          connection = null;
-        }
+        if (isReconnecting) return;
 
-        // always clear timer before set it;
-        clearTimeout(reconnectTimeout);
-        reconnectTimeout = setTimeout(() => {
-          try {
-            initializeNode(nodeIns)
-          } catch (e) {
-            reconnect()
-          }
-        }, 2000)
+        isReconnecting = true;
+
+        try {
+
+          await clearChannelAndConnection()
+
+          // always clear timer before set it;
+          clearTimeout(reconnectTimeout);
+          reconnectTimeout = setTimeout(() => {
+            try {
+              initializeNode(nodeIns)
+            } catch (e) {
+              reconnect()
+            }
+          }, 2000)
+        }
+        catch (e) {
+          isReconnecting = false;
+          let errorMsg = `Error while reconnecting, details: ${e}`
+          RED.log.error(errorMsg);
+          nodeIns.status(NODE_STATUS.Error(errorMsg));
+        }
+        finally {
+          isReconnecting = false;
+        }
       }
-  
+
       try {
         const connection = await amqp.connect()
 
@@ -139,36 +204,41 @@ module.exports = function (RED: NodeRedApp): void {
 
           // When the server goes down
           connection.on('close', async e => {
-            e && (await reconnect())
+            RED.log.debug(`Connection closed details: ${e}`)
+            await handleReconnect(nodeIns, e)
           })
-          
+
           // When the connection goes down
           connection.on('error', async e => {
-            reconnectOnError && (await reconnect())
-            nodeIns.error(`Connection error ${e}`, { payload: { error: e, location: ErrorLocationEnum.ConnectionErrorEvent } })
+            RED.log.error(`Connection error ${e}`)
+            nodeIns.status(NODE_STATUS.Error(`Connection error. Reconnecting...`))
+            await handleReconnect(nodeIns, e)
           })
 
           // When the channel goes down
-          channel.on('close', async () => {
-            await reconnect()
+          channel.on('close', async (e) => {
+            RED.log.debug(`Channel closed.`)
+            nodeIns.status(NODE_STATUS.Reconnecting(`Channel closed. Reconnecting...`))
+            await handleReconnect(nodeIns, e)
           })
 
           // When the channel error occur
           channel.on('error', async e => {
-            reconnectOnError && (await reconnect())
-            nodeIns.error(`Channel error ${e}`, { payload: { error: e, location: ErrorLocationEnum.ChannelErrorEvent } })
+            RED.log.error(`Channel error ${e}`)
+            nodeIns.status(NODE_STATUS.Error(`Channel error. Reconnecting...`))
+            await handleReconnect(nodeIns, e)
           })
-          
-          nodeIns.status(NODE_STATUS.Connected)
+
+          nodeIns.status(NODE_STATUS.Connected(`Ready.`))
         }
       } catch (e) {
         reconnectOnError && (await reconnect())
         if (e.code === ErrorType.InvalidLogin) {
-          nodeIns.status(NODE_STATUS.Invalid)
-          nodeIns.error(`AmqpOut() Could not connect to broker ${e}`, { payload: { error: e, location: ErrorLocationEnum.ConnectError } })
+          nodeIns.status(NODE_STATUS.Invalid(null))
+          RED.log.error(`Could not connect to broker, error details: ${e}`)
         } else {
-          nodeIns.status(NODE_STATUS.Error)
-          nodeIns.error(`AmqpOut() ${e}`, { payload: { error: e, location: ErrorLocationEnum.ConnectError } })
+          RED.log.error(`AmqpOut() ${e}`)
+          nodeIns.status(NODE_STATUS.Error(`Error while reconnecting. Details ${e}`))
         }
       }
     }

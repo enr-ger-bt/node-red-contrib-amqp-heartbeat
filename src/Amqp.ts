@@ -21,6 +21,7 @@ import {
 } from './types'
 import { NODE_STATUS } from './constants'
 
+
 export default class Amqp {
   private config: AmqpConfig
   private broker: Node
@@ -37,7 +38,7 @@ export default class Amqp {
       name: config.name,
       broker: config.broker,
       prefetch: config.prefetch,
-      reconnectOnError: config.reconnectOnError,
+      maxAttempts: config.maxAttempts,
       noAck: config.noAck,
       exchange: {
         name: config.exchangeName,
@@ -57,11 +58,12 @@ export default class Amqp {
       headers: this.parseJson(config.headers),
       outputs: config.outputs,
       rpcTimeout: config.rpcTimeoutMilliseconds,
+      clientName: config.clientName
     }
   }
 
   public async connect(): Promise<Connection> {
-    const { broker } = this.config
+    const { broker, clientName, name } = this.config
 
     // wtf happened to the types?
     // eslint-disable-next-line @typescript-eslint/ban-ts-comment
@@ -69,18 +71,29 @@ export default class Amqp {
     this.broker = this.RED.nodes.getNode(broker)
 
     const brokerUrl = this.getBrokerUrl(this.broker)
-    this.connection = await connect(brokerUrl, { heartbeat: 2 })
+   
+    // Determine the connection name, falling back to `name` if `clientName` is invalid
+    const connectionName = clientName && clientName.trim() !== "" ? clientName : `${name}-${uuidv4()}`;
+
+    this.connection = await connect(brokerUrl, {
+      heartbeat: 2, 
+      ...(connectionName && { clientProperties: { connection_name: connectionName } })
+    })
 
     /* istanbul ignore next */
     this.connection.on('error', (e): void => {
-      // Set node to disconnected status
-      this.node.status(NODE_STATUS.Disconnected)
+      this.node.error(`AMQP Connection error: ${e}`);
+      this.node.status(NODE_STATUS.Disconnected(null))
+      // If we don't set up this empty event handler
+      // node-red crashes with an Unhandled Exception
+      // This method allows the exception to be caught
+      // by the try/catch blocks in the amqp nodes
     })
 
     /* istanbul ignore next */
     this.connection.on('close', () => {
-      this.node.status(NODE_STATUS.Disconnected)
       this.node.log(`AMQP Connection closed`);
+      this.node.status(NODE_STATUS.Disconnected(null))
     })
 
     return this.connection
@@ -305,9 +318,8 @@ export default class Amqp {
 
     /* istanbul ignore next */
     this.channel.on('error', (e): void => {
-      // Set node to disconnected status
-      this.node.status(NODE_STATUS.Disconnected)
-      this.node.error(`AMQP Connection Error ${e}`, { payload: { error: e, source: 'Amqp' } })
+      this.node.error(`AMQP Connection error: ${e}`);
+      this.node.status(NODE_STATUS.Disconnected(null))
     })
 
     return this.channel;
