@@ -204,7 +204,7 @@ module.exports = function (RED: NodeRedApp): void {
 
           // When the server goes down
           connection.on('close', async e => {
-            RED.log.debug(`Connection closed details: ${e}`)
+            //RED.log.debug(`Connection closed details: ${e}`)
             await handleReconnect(nodeIns, e)
           })
 
@@ -217,7 +217,7 @@ module.exports = function (RED: NodeRedApp): void {
 
           // When the channel goes down
           channel.on('close', async (e) => {
-            RED.log.debug(`Channel closed.`)
+            //RED.log.debug(`Channel closed.`)
             nodeIns.status(NODE_STATUS.Reconnecting(`Channel closed. Reconnecting...`))
             await handleReconnect(nodeIns, e)
           })

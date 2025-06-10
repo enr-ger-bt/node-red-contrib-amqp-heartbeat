@@ -72,10 +72,11 @@ module.exports = function (RED: NodeRedApp): void {
      */
     async function clearChannelAndConnection() {
 
-      RED.log.debug(`Clearing channel and connection`)
+      //RED.log.debug(`Clearing channel and connection`)
       try {
         if (!channel && !connection) {
-          RED.log.debug(`Channel and connection are already cleared`)
+          //RED.log.debug(`Channel and connection are already cleared`)
+          return;
         }
 
 
@@ -91,7 +92,8 @@ module.exports = function (RED: NodeRedApp): void {
       }
       catch (err) {
         if (err && err.name === 'IllegalOperationError' && err.message.includes('Channel closed')) {
-          RED.log.warn(`Channel already closed, ignoring: ${err.message}`);
+          //RED.log.warn(`Channel already closed, ignoring: ${err.message}`);
+          return;
         } else {
           RED.log.error(`Error while closing channel: ${err.stack || err}`);
         }
@@ -110,7 +112,7 @@ module.exports = function (RED: NodeRedApp): void {
      * @throws Will throw an error if the reconnection attempt fails.
      */
     async function handleReconnect(nodeIns, e) {
-      RED.log.debug(`Reconnecting...`)
+      //RED.log.debug(`Reconnecting...`)
 
       try {
         nodeIns.status(NODE_STATUS.Reconnecting("Reconnecting..."))
@@ -176,7 +178,7 @@ module.exports = function (RED: NodeRedApp): void {
 
           // When the connection goes down
           connection.on('close', async e => {
-            RED.log.info(`Connection closed...`)
+            //RED.log.info(`Connection closed...`)
             connectionNumber--;
             VerifyConnectionNumber();
             await handleReconnect(nodeIns, e)
@@ -193,7 +195,7 @@ module.exports = function (RED: NodeRedApp): void {
 
           // When the channel goes down
           channel.on('close', async () => {
-            RED.log.debug(`Channel closed`)
+            //RED.log.debug(`Channel closed`)
             await handleReconnect(nodeIns, null)
           })
 
