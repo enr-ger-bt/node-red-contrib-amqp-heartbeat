@@ -46,3 +46,8 @@ Run coverage:
 npm run test:cov
 ```
 
+### Create tgz file:
+
+```
+npm pack
+```
