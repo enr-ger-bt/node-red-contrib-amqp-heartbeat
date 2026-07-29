@@ -1,7 +1,7 @@
 {
   "name": "@beantech/node-red-contrib-amqp",
   "license": "ISC",
-  "version": "1.4.1",
+  "version": "1.5.0",
   "description": "Amqp nodes for node-red",
   "main": "index.js",
   "scripts": {
@@ -73,11 +73,15 @@
     "typescript": "^4.3.5"
   },
   "dependencies": {
-    "@beantech/node-red-contrib-amqp": "file:",
     "amqplib": "^0.10.3",
     "lodash.clonedeep": "^4.5.0",
     "uuid": "^8.3.2"
   },
+  "bundledDependencies": [
+    "amqplib",
+    "lodash.clonedeep",
+    "uuid"
+  ],
   "publishConfig": {
     "access": "public"
   }
