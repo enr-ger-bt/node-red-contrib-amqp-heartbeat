@@ -76,7 +76,8 @@ export default class Amqp {
     const connectionName = clientName && clientName.trim() !== "" ? clientName : `${name}-${uuidv4()}`;
 
     this.connection = await connect(brokerUrl, {
-      heartbeat: 2, 
+      heartbeat: 2,
+      frameMax: 131072,
       ...(connectionName && { clientProperties: { connection_name: connectionName } })
     })
 
